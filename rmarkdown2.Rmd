@@ -1,0 +1,292 @@
+---
+title: "Exam2"
+author: "Kavya Sethi"
+date: "6/28/2021"
+output: 
+  pdf_document:
+    toc: true
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1. Clearing environment in r. 
+
+This code clears the global environment where loaded data appears. 
+
+```{r}
+rm(list=ls(all=TRUE))
+```
+
+
+## 2. Loading the college_scorecard and name it “college_scorecard”
+
+To load data in R, I must first call on package rio and then upload data. 
+
+```{r}
+library(rio)
+
+college_scorecard = import("2021_exam2_data.xlsx", which = 4)
+
+```
+
+Note that I designated which tab of the exam sheet through, "which = 4" in the previous code chunk 
+
+## 3. Summary statistics for the college_scorecard dataset.
+
+Simply use summary() which is a part of r base. 
+
+```{r}
+summary(college_scorecard)
+```
+
+NICE!
+
+## 4. Creating small_scorecard
+
+small_scorecard includes data measured in 2014 and 2015 on former students who graduated from four-year+ colleges and universities located in Texas (state_abbr: “TX”) and Louisiana (state_abbr: “LA”).
+
+```{r}
+library(dplyr)
+
+#Check class of year so that I know is 2014/2014 should be put in "". 
+class(college_scorecard$year)
+
+# Create a vector to filter both TX and LA/2014 and 2015 through the code below
+state_names <- c("TX", "LA")
+small_years <- c(2015,2014)
+
+small_scorecard <- filter(college_scorecard, year== small_years)
+small_scorecard <- filter(small_scorecard,pred_degree_awarded_ipeds==3)
+small_scorecard <- filter(small_scorecard,state_abbr == state_names)
+```
+
+Seems to be some values missing, but after filtering with excel data there are values missing with specified variables. 
+Note call dplyr because it includes filter(). 
+
+## 5.Collapse small_card into even_smaller_scorecard”
+
+Get average of number people working who graduated from universities in Texas and Lousiana and total number of people working who graduated from universities in Texas and Lousiana. 
+
+Name it “even_smaller_scorecard”
+
+
+```{r}
+
+small_scorecard$total = small_scorecard$count_not_working + small_scorecard$count_working
+
+
+even_smaller_scorecard <- 
+  small_scorecard%>%
+  group_by(state_abbr) %>% # tell R the unique IDs 
+  summarize(across(where(is.numeric), sum, na.rm = TRUE))%>% # summarize numeric vars by 
+  select(-c("unitid","pred_degree_awarded_ipeds","year","earnings_med","count_not_working"))
+
+print(even_smaller_scorecard)
+
+```
+
+
+## 6. even_smaller_scorecard bar graph 
+
+use ggplot2
+
+```{r}
+
+even_smaller_scorecard$percentage <-(even_smaller_scorecard$count_working/even_smaller_scorecard$total*100)
+
+library(ggplot2)
+
+even_smaller_scorecardgraph <- ggplot(even_smaller_scorecard, aes(x=state_abbr,y=percentage, fill = state_abbr)) +
+  geom_col() + labs( x = "State", y = "Percentage of People working",
+title ="Percentage of Graduates of a 4-year College Working", subtitle = "In the combined years of 2014 and 2015")
+
+print(even_smaller_scorecardgraph)
+
+```
+
+
+## 7. On the basis of the Graph 
+
+Broadly speaking, the bar graphs between TX and LA appear to be relatively similar. The percentage difference between the states is too small to be significant. 
+
+```{r}
+summary(even_smaller_scorecard)
+
+```
+
+
+```{r}
+summary(small_scorecard)
+```
+
+Based on the data summaries and graph, I do not think there is a significant difference between the state of Texas and Lousiana. 
+I was unable to calculate other states in the college_scoreboard so I would not be comfortable guessing if there is advantage in gaining employment between all 50 states or universities. But considering that the data is so board, it is likely that some particular states or particular universities have a higher percentage of graduates employed. 
+
+
+
+## 8. Load avocado dataset
+
+```{r}
+library(rio)
+
+avocados <- import("2021_exam2_data.xlsx", which = 2)
+```
+
+## 9. Capture Year Avocados were sold 
+
+Use lubridate package to extrapolate the year into a new column
+
+```{r}
+library(lubridate)
+library(nycflights13)
+library(dplyr)
+avocado_dates <- avocados
+
+avocados<- 
+avocado_dates %>%
+  dplyr::mutate(lubridate::year(avocado_dates$date))
+
+
+```
+
+## 10. Deflated Data 
+
+Google WDI GDP deflator 
+```{r}
+library(WDI)
+# https://data.worldbank.org/indicator/NY.GDP.DEFL.ZS
+deflator_data = WDI(country = "all", indicator = c("NY.GDP.DEFL.ZS"),
+  start = 2015, # start of foreign aid data 
+  end = 2018, # end of of foreign aid data 
+  extra = FALSE, cache = NULL)
+
+# rename variables so they are understandable using the data.table package
+library(data.table) 
+setnames(deflator_data,"NY.GDP.DEFL.ZS", "deflator")
+
+setnames(avocados,"lubridate::year(avocado_dates$date)","year")
+
+
+# select only the United States data
+usd_deflator = subset(deflator_data, country=="United States")
+
+# To determine base year
+subset(usd_deflator, deflator==100)
+
+deflated_avocados= left_join(avocados, usd_deflator, by=c("year"))
+
+deflated_avocados$deflated_average_price = deflated_avocados$average_price/(deflated_avocados$deflator/100)
+```
+
+
+## 11. Collapse Data into collapsed_avocados
+
+
+```{r}
+collapsed_avocados <-  deflated_avocados %>%
+  group_by(year) %>% # tell R the unique IDs 
+  summarize(across(where(is.numeric), sum)) %>% # summarize numeric vars by 
+  select(-c("average_price","total_volume","deflator"))
+
+head(collapsed_avocados)
+```
+## 12. Reshape collapsed_avocado wide
+
+
+```{r}
+library(tidyverse)
+wide_avocados <-
+ collapsed_avocados %>%
+   pivot_wider(id_cols = "year",names_from = year,values_from = deflated_average_price)
+head(wide_avocados)
+
+```
+
+## Label your variables on wide_avocados 
+
+```{r}
+library(labelled)
+  var_label(wide_avocados) <- list('2015' = "Year",'2016' = "Year", '2017' = "Year",'2018' = "Year")
+
+```
+
+
+## 14. Load training dataset
+
+```{r}
+library(rio)
+
+training = import("2021_exam2_data.xlsx", which = 3)
+
+```
+
+## 15. Reshaping training data long 
+
+```{r}
+long_training <- 
+  training %>% 
+  pivot_longer(cols = starts_with("re_"),names_to = "Year", names_prefix = "re_")
+
+summary(long_training)
+
+```
+
+## 16 Load the titanic in R and call the resulting data frame titanic
+
+```{r}
+library(rio)
+
+titantic = import("2021_exam2_data.xlsx", which = 1)
+```
+
+
+## 17. Summary Statistics of Titantic 
+
+```{r}
+summary(titantic)
+```
+
+
+## 18. Correlation between gender and survival 
+
+```{r}
+
+titantic$male = NA
+titantic$male[titantic$female==0]=1
+titantic$male[titantic$female==1]=0
+
+titantic$notsurvived = NA
+titantic$notsurvived[titantic$survived==1]=0
+titantic$notsurvived[titantic$survived==0]=1
+
+cor(titantic$female,titantic$survived)
+
+cor(titantic$male,titantic$survived)
+
+library(doBy)
+
+summaryBy(male ~ survived, data=titantic, FUN=c(mean,length))
+
+```
+
+The tab shows us that of those that survived (1), the male mean was higher than those that didn't survive. Meaning more men survived. So the correlation between the male gender and surving 0.4556048, means that more men survived. 
+
+19. ifelse first class
+
+```{r}
+
+FirstClass <- titantic$class
+
+ifelse(test = FirstClass == 1, yes = "Passenger had First Class", no = "Passenger did not have first class")
+
+```
+
+
+## BONUS 
+
+“My Heart Will Go On” by Céline Dion
+
+
